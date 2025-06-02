@@ -195,6 +195,24 @@ const ManageDashboard = () => {
             >
               耗材使用记录
             </Link>
+             <Link 
+              to="/manage/consume" 
+              className={`nav-item ${location.pathname === '/manage/consume' ? 'active' : ''}`}
+            >
+              仪器管理
+            </Link>
+             <Link 
+              to="/manage/consume" 
+              className={`nav-item ${location.pathname === '/manage/consume' ? 'active' : ''}`}
+            >
+              仪器使用记录
+            </Link>
+             <Link 
+              to="/manage/consume" 
+              className={`nav-item ${location.pathname === '/manage/consume' ? 'active' : ''}`}
+            >
+              风险记录
+            </Link>
           </nav>
         </div>
 
