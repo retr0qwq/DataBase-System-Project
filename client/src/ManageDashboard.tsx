@@ -6,6 +6,9 @@ import PersonnelManagement from './Personnel';
 import LabManage from './Lab';
 import ConsumableManage from './Consumable';
 import ConsumeManage from './Consume';
+import EquipmentManage from './Equipment';
+import EquipmentUsageManage from './EquipmentUse';
+import RiskRecordManage from './RiskRecord';
 interface User {
   username: string;
 }
@@ -196,20 +199,20 @@ const ManageDashboard = () => {
               耗材使用记录
             </Link>
              <Link 
-              to="/manage/consume" 
-              className={`nav-item ${location.pathname === '/manage/consume' ? 'active' : ''}`}
+              to="/manage/equipment" 
+              className={`nav-item ${location.pathname === '/manage/equipment' ? 'active' : ''}`}
             >
               仪器管理
             </Link>
              <Link 
-              to="/manage/consume" 
-              className={`nav-item ${location.pathname === '/manage/consume' ? 'active' : ''}`}
+              to="/manage/equipmentuse" 
+              className={`nav-item ${location.pathname === '/manage/equipmentuse' ? 'active' : ''}`}
             >
               仪器使用记录
             </Link>
              <Link 
-              to="/manage/consume" 
-              className={`nav-item ${location.pathname === '/manage/consume' ? 'active' : ''}`}
+              to="/manage/riskrecord" 
+              className={`nav-item ${location.pathname === '/manage/riskrecord' ? 'active' : ''}`}
             >
               风险记录
             </Link>
@@ -224,6 +227,10 @@ const ManageDashboard = () => {
             <Route path="/lab" element={<LabManage />} />
             <Route path="/consumable" element={<ConsumableManage />} />
             <Route path="/consume" element={<ConsumeManage />} />
+            <Route path="/equipment" element={<EquipmentManage />} />
+            <Route path="/equipmentuse" element={<EquipmentUsageManage />} />
+            <Route path="/riskrecord" element={<RiskRecordManage />} />
+            {/* 其他路由可以在这里添加 */}
           </Routes>
         </div>
       </main>

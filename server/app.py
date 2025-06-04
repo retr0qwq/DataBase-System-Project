@@ -369,6 +369,68 @@ def update_consumable(consumable_id):
     except Exception as e:
         db.session.rollback()
         return jsonify({"status": "error", "message": str(e)}), 500
+
+# ------------------------ 获取仪器列表 -------------------------
+@app.route('/api/equipment', methods=['GET'])
+def get_equipment_list():
+    try:
+        equipment = Equipment.query.all()
+        data = []
+        for e in equipment:
+            data.append({
+                'equip_id': e.equip_id,
+                'type': e.type,
+                'used_age': e.used_age,
+                'purchase_date': e.purchase_date.isoformat() if e.purchase_date else None,
+                'if_booked': e.if_booked,
+                'Maintain_cycle': e.Maintain_cycle
+            })
+        return jsonify({"status": "success", "data": data})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+# ------------------------ 添加仪器 -------------------------
+@app.route('/api/equipment', methods=['POST'])
+def add_equipment():
+    try:
+        data = request.get_json()
+        new_e = Equipment(
+            equip_id=data['equip_id'],
+            type=data.get('type'),
+            used_age=data.get('used_age'),
+            purchase_date=datetime.strptime(data['purchase_date'], '%Y-%m-%d').date() if data.get('purchase_date') else None,
+            if_booked=data.get('if_booked'),
+            Maintain_cycle=data.get('Maintain_cycle')
+        )
+        db.session.add(new_e)
+        db.session.commit()
+        return jsonify({"status": "success", "message": "添加成功"})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+# ------------------------ 更新仪器 -------------------------
+@app.route('/api/equipment/<equip_id>', methods=['PUT'])
+def update_equipment(equip_id):
+    try:
+        data = request.get_json()
+        e = Equipment.query.get(equip_id)
+        if not e:
+            return jsonify({"status": "error", "message": "未找到该设备"}), 404
+
+        e.type = data.get('type', e.type)
+        e.used_age = data.get('used_age', e.used_age)
+        e.purchase_date = datetime.strptime(data['purchase_date'], '%Y-%m-%d').date() if data.get('purchase_date') else e.purchase_date
+        e.if_booked = data.get('if_booked', e.if_booked)
+        e.Maintain_cycle = data.get('Maintain_cycle', e.Maintain_cycle)
+
+        db.session.commit()
+        return jsonify({"status": "success", "message": "更新成功"})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"status": "error", "message": str(e)}), 500
 # ------------------------ 删除人员 -------------------------
 @app.route('/api/personnel/<personnel_id>', methods=['DELETE'])
 def delete_personnel(personnel_id):
@@ -472,75 +534,154 @@ def delete_college(college_id):
 
 from sqlalchemy import text
 from sqlalchemy import text
-
-@app.route('/api/consume', methods=['POST'])
-def consume_material():
-    try:
-        data = request.get_json()
-        personnel_id = data.get('personnel_id')
-        consumable_id = data.get('consumable_id')
-        amount = data.get('amount', 1)  # 默认数量为1
-
-        if not personnel_id or not consumable_id:
-            return jsonify({'status': 'error', 'message': '人员ID和耗材ID不能为空'}), 400
-
-        # 直接插入记录（触发器会自动处理库存检查、时间记录和库存更新）
-        db.session.execute(
-            text("""
-                INSERT INTO consume (personnel_id, consumable_id, amount)
-                VALUES (:personnel_id, :consumable_id, :amount)
-            """),
-            {
-                'personnel_id': personnel_id,
-                'consumable_id': consumable_id,
-                'amount': amount
-            }
-        )
-        
-        db.session.commit()
-        return jsonify({'status': 'success', 'message': '耗材消耗记录添加成功'}), 200
-
-    except Exception as e:
-        db.session.rollback()
-        error_msg = str(e)
-        # 捕获触发器抛出的特定错误
-        if "耗材不存在" in error_msg:
-            return jsonify({'status': 'error', 'message': '指定的耗材不存在'}), 400
-        elif "库存不足" in error_msg:
-            return jsonify({'status': 'error', 'message': '库存不足，无法消耗'}), 400
-        return jsonify({'status': 'error', 'message': f'操作失败: {error_msg}'}), 500
 # ------------------------添加设备使用记录------------------------
 @app.route('/api/equipment/usage', methods=['POST'])
 def record_equipment_usage():
     try:
         data = request.get_json()
-        # 时间格式转换
-        start_time = datetime.strptime(data['start_time'], '%Y-%m-%d %H:%M:%S')
-        end_time = datetime.strptime(data['end_time'], '%Y-%m-%d %H:%M:%S')
         
-        with db.engine.connect() as conn:
-            conn.execute("SET @result = ''")
-            conn.execute(
-                "CALL add_usage_record(:equip_id, :personnel_id, :start_time, :end_time, :condition, @result)",
-                {
-                    'equip_id': data['equip_id'],
-                    'personnel_id': data['personnel_id'],
-                    'start_time': start_time,
-                    'end_time': end_time,
-                    'condition': data.get('condition', '正常')
-                }
+        # 1. 基础验证
+        required_fields = ['equip_id', 'personnel_id', 'start_time', 'end_time']
+        if not all(field in data for field in required_fields):
+            return jsonify({'status': 'error', 'message': '缺少必要字段'}), 400
+
+        # 2. 时间格式验证
+        try:
+            start_time = datetime.strptime(data['start_time'], '%Y-%m-%d %H:%M:%S')
+            end_time = datetime.strptime(data['end_time'], '%Y-%m-%d %H:%M:%S')
+        except ValueError:
+            return jsonify({'status': 'error', 'message': '时间格式错误，请使用 YYYY-MM-DD HH:MM:SS 格式'}), 400
+
+        # 3. 时间逻辑验证
+        if start_time >= end_time:
+            return jsonify({'status': 'error', 'message': '结束时间必须晚于开始时间'}), 400
+
+        # 4. 使用事务执行插入操作
+        with db.session.begin_nested():  # 使用嵌套事务以便捕获触发器错误
+            new_record = Use_record(
+                equip_id=data['equip_id'],
+                personnel_id=data['personnel_id'],
+                start_time=start_time,
+                end_time=end_time,
+                equip_condition=data.get('condition', '正常'),
+                if_expired=False  # 默认值
             )
-            result = conn.execute("SELECT @result").scalar()
-        
-        if result.startswith('Error'):
-            return jsonify({'status': 'error', 'message': result[7:]}), 400
-        else:
-            return jsonify({'status': 'success', 'message': result[9:]}), 200
-            
-    except ValueError:
-        return jsonify({'status': 'error', 'message': '时间格式错误'}), 400
+            db.session.add(new_record)
+        db.session.commit()
+        # 5. 如果执行到这里说明触发器验证通过
+        return jsonify({
+            'status': 'success',
+            'message': '设备使用记录添加成功',
+            'record_id': f"{data['equip_id']}-{data['personnel_id']}"
+        }), 201
+
     except Exception as e:
-        return jsonify({'status': 'error', 'message': str(e)}), 500
+        # 6. 捕获触发器抛出的错误
+        error_msg = str(e)
+        if "超出设备维护周期" in error_msg:
+            return jsonify({'status': 'error', 'message': '错误：'+error_msg}), 400
+        elif "时间冲突" in error_msg:
+            return jsonify({'status': 'error', 'message': '错误：'+error_msg}), 409
+        elif "设备不存在" in error_msg:
+            return jsonify({'status': 'error', 'message': '错误：'+error_msg}), 404
+        else:
+            return jsonify({'status': 'error', 'message': '服务器错误：'+error_msg}), 500
+# ------------------------ 查询设备使用记录 ------------------------
+@app.route('/api/equipment/usage', methods=['GET'])
+def get_equipment_usage():
+    try:
+        # 支持按设备ID、人员ID或时间范围查询
+        equip_id = request.args.get('equip_id')
+        personnel_id = request.args.get('personnel_id')
+        start_date = request.args.get('start_date')
+        end_date = request.args.get('end_date')
+
+        query = Use_record.query
+
+        # 构建查询条件
+        if equip_id:
+            query = query.filter(Use_record.equip_id == equip_id)
+        if personnel_id:
+            query = query.filter(Use_record.personnel_id == personnel_id)
+        if start_date:
+            try:
+                start_date = datetime.strptime(start_date, '%Y-%m-%d')
+                query = query.filter(Use_record.start_time >= start_date)
+            except ValueError:
+                return jsonify({'status': 'error', 'message': '开始日期格式错误'}), 400
+        if end_date:
+            try:
+                end_date = datetime.strptime(end_date, '%Y-%m-%d')
+                query = query.filter(Use_record.end_time <= end_date)
+            except ValueError:
+                return jsonify({'status': 'error', 'message': '结束日期格式错误'}), 400
+
+        # 执行查询
+        records = query.order_by(Use_record.start_time.desc()).all()
+
+        # 格式化返回数据
+        result = []
+        for record in records:
+            result.append({
+                'equip_id': record.equip_id,
+                'personnel_id': record.personnel_id,
+                'start_time': record.start_time.strftime('%Y-%m-%d %H:%M:%S'),
+                'end_time': record.end_time.strftime('%Y-%m-%d %H:%M:%S'),
+                'cost': float(record.cost) if record.cost else 0.0,
+                'equip_condition': record.equip_condition,
+                'if_expired': bool(record.if_expired)
+            })
+
+        return jsonify({
+            'status': 'success',
+            'data': result,
+            'count': len(result)
+        })
+
+    except Exception as e:
+        return jsonify({
+            'status': 'error',
+            'message': f'查询失败: {str(e)}'
+        }), 500
+
+# ------------------------ 删除设备使用记录 ------------------------
+@app.route('/api/equipment/usage/<equip_id>/<personnel_id>', methods=['DELETE'])
+def delete_equipment_usage(equip_id, personnel_id):
+    try:
+        # 首先尝试获取记录
+        record = Use_record.query.filter_by(
+            equip_id=equip_id,
+            personnel_id=personnel_id
+        ).first()
+
+        if not record:
+            return jsonify({
+                'status': 'error',
+                'message': '未找到指定的使用记录'
+            }), 404
+
+        # 检查时间是否已过（可选业务逻辑）
+        if record.end_time < datetime.now():
+            return jsonify({
+                'status': 'error',
+                'message': '不能删除已结束的使用记录'
+            }), 400
+
+        # 执行删除
+        db.session.delete(record)
+        db.session.commit()
+
+        return jsonify({
+            'status': 'success',
+            'message': '使用记录删除成功'
+        })
+
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({
+            'status': 'error',
+            'message': f'删除失败: {str(e)}'
+        }), 500
 # ------------------------ 获取耗材使用记录 ------------------------
 @app.route('/api/consume', methods=['GET'])
 def get_consumption_records():
@@ -614,16 +755,104 @@ def get_consumable_status():
         return jsonify({'status': 'success', 'data': data})
     except Exception as e:
         return jsonify({'status': 'error', 'message': str(e)}), 500
+# ------------------------ 获取风险记录 -------------------------
+@app.route('/api/risk', methods=['GET'])
+def get_risk_records():
+    try:
+        records = Risk_Record.query.order_by(Risk_Record.happen_time.desc()).all()
+        result = [{
+            'happen_time': record.happen_time.strftime('%Y-%m-%d %H:%M:%S'),
+            'lab_id': record.lab_id,
+            'risk_level': record.risk_level
+        } for record in records]
+
+        return jsonify({'status': 'success', 'data': result}), 200
+
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+# ------------------------ 添加风险记录 -------------------------
+@app.route('/api/risk', methods=['POST'])
+def add_risk_record():
+    try:
+        data = request.get_json()
+
+        required_fields = ['happen_time', 'lab_id', 'risk_level']
+        if not all(field in data for field in required_fields):
+            return jsonify({'status': 'error', 'message': '缺少必要字段'}), 400
+
+        try:
+            happen_time = datetime.strptime(data['happen_time'], '%Y-%m-%d %H:%M:%S')
+        except ValueError:
+            return jsonify({'status': 'error', 'message': '时间格式错误，应为 YYYY-MM-DD HH:MM:SS'}), 400
+
+        new_record = Risk_Record(
+            happen_time=happen_time,
+            lab_id=data['lab_id'],
+            risk_level=int(data['risk_level'])
+        )
+        db.session.add(new_record)
+        db.session.commit()
+
+        return jsonify({'status': 'success', 'message': '风险记录添加成功'}), 201
+
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+# ------------------------ 删除风险记录 -------------------------
+@app.route('/api/risk/<happen_time>', methods=['DELETE'])
+def delete_risk_record(happen_time):
+    try:
+        try:
+            happen_time_dt = datetime.strptime(happen_time, '%Y-%m-%d %H:%M:%S')
+        except ValueError:
+            return jsonify({"status": "error", "message": "时间格式错误，应为 YYYY-MM-DD HH:MM:SS"}), 400
+
+        record = Risk_Record.query.get(happen_time_dt)
+        if not record:
+            return jsonify({"status": "error", "message": "未找到对应的风险记录"}), 404
+
+        db.session.delete(record)
+        db.session.commit()
+        return jsonify({"status": "success", "message": "删除成功"}), 200
+
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"status": "error", "message": str(e)}), 500
+# ------------------------ 更新风险记录 -------------------------
+@app.route('/api/risk/<happen_time>', methods=['PUT'])
+def update_risk_record(happen_time):
+    try:
+        data = request.get_json()
+
+        try:
+            happen_time_dt = datetime.strptime(happen_time, '%Y-%m-%d %H:%M:%S')
+        except ValueError:
+            return jsonify({"status": "error", "message": "时间格式错误，应为 YYYY-MM-DD HH:MM:SS"}), 400
+
+        record = Risk_Record.query.get(happen_time_dt)
+        if not record:
+            return jsonify({"status": "error", "message": "未找到对应的风险记录"}), 404
+
+        record.lab_id = data.get('lab_id', record.lab_id)
+        record.risk_level = data.get('risk_level', record.risk_level)
+
+        db.session.commit()
+        return jsonify({"status": "success", "message": "更新成功"}), 200
+
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"status": "error", "message": str(e)}), 500
+
 # ------------------------ 查询高风险实验室 -------------------------
-@app.route('/api/labs/high_risk', methods=['GET'])
+@app.route('/api/risk/view_status', methods=['GET'])
 def get_high_risk_labs_and_update_training():
     try:
         with db.engine.connect() as conn:
             # 调用存储过程，更新 training_status
-            conn.execute("CALL update_training_status_by_risk()")
+            conn.execute(text("CALL update_training_status_by_risk()"))
 
             # 查询视图返回高风险实验室信息
-            result = conn.execute("SELECT * FROM v_lab_risk_status").mappings().all()
+            result = conn.execute(text("SELECT * FROM v_high_risk_labs")).mappings().all()
             data = [dict(row) for row in result]
 
         return jsonify({'status': 'success', 'data': data})

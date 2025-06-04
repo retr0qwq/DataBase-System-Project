@@ -135,7 +135,9 @@ const PersonnelManagement = () => {
               <td>{person.age}</td>
               <td>{person.entry_date}</td>
               <td>{person.role}</td>
-              <td>{person.training_status}</td>
+              <td className={person.training_status === '未培训' ? 'status-untrained' : ''}>
+                  {person.training_status}
+              </td>
               <td>
                 <button
                   className="action-button edit"
