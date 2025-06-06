@@ -709,8 +709,43 @@ def get_consumption_records():
 
     except Exception as e:
         return jsonify({'status': 'error', 'message': str(e)}), 500
+# ------------------------ 添加耗材使用记录 ------------------------
+@app.route('/api/consume', methods=['POST'])
+def consume_material():
+    try:
+        data = request.get_json()
+        personnel_id = data.get('personnel_id')
+        consumable_id = data.get('consumable_id')
+        amount = data.get('amount', 1)  # 默认数量为1
 
+        if not personnel_id or not consumable_id:
+            return jsonify({'status': 'error', 'message': '人员ID和耗材ID不能为空'}), 400
 
+        # 直接插入记录（触发器会自动处理库存检查、时间记录和库存更新）
+        db.session.execute(
+            text("""
+                INSERT INTO consume (personnel_id, consumable_id, amount)
+                VALUES (:personnel_id, :consumable_id, :amount)
+            """),
+            {
+                'personnel_id': personnel_id,
+                'consumable_id': consumable_id,
+                'amount': amount
+            }
+        )
+        
+        db.session.commit()
+        return jsonify({'status': 'success', 'message': '耗材消耗记录添加成功'}), 200
+
+    except Exception as e:
+        db.session.rollback()
+        error_msg = str(e)
+        # 捕获触发器抛出的特定错误
+        if "耗材不存在" in error_msg:
+            return jsonify({'status': 'error', 'message': '指定的耗材不存在'}), 400
+        elif "库存不足" in error_msg:
+            return jsonify({'status': 'error', 'message': '库存不足，无法消耗'}), 400
+        return jsonify({'status': 'error', 'message': f'操作失败: {error_msg}'}), 500
 # ------------------------ 更新耗材使用记录 ------------------------
 @app.route('/api/consume/<personnel_id>/<consumable_id>', methods=['PUT'])
 def update_consumption(personnel_id, consumable_id):

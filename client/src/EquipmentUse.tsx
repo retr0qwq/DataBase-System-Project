@@ -29,6 +29,7 @@ const EquipmentUsageManage = () => {
   });
   const [error, setError] = useState<string | null>(null);
   const [recordToDelete, setRecordToDelete] = useState<{equip_id: string, personnel_id: string} | null>(null);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   const resetForm = () => {
     setFormData({
@@ -39,12 +40,13 @@ const EquipmentUsageManage = () => {
       if_expired: false
     });
   };
+
   const formatToSQLDateTime = (localDateTime: string) => {
-  if (!localDateTime) return '';
-  const date = new Date(localDateTime);
-  const pad = (n: number) => n.toString().padStart(2, '0');
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
-};
+    if (!localDateTime) return '';
+    const date = new Date(localDateTime);
+    const pad = (n: number) => n.toString().padStart(2, '0');
+    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+  };
 
   const fetchUsageList = async () => {
     setIsLoading(prev => ({...prev, table: true}));
@@ -123,13 +125,12 @@ const EquipmentUsageManage = () => {
 
     try {
       const payload = {
-  equip_id: formData.equip_id,
-  personnel_id: formData.personnel_id,
-  start_time: formatToSQLDateTime(formData.start_time!),
-  end_time: formatToSQLDateTime(formData.end_time!),
-  condition: formData.equip_condition || '正常'
-    };
-
+        equip_id: formData.equip_id,
+        personnel_id: formData.personnel_id,
+        start_time: formatToSQLDateTime(formData.start_time!),
+        end_time: formatToSQLDateTime(formData.end_time!),
+        condition: formData.equip_condition || '正常'
+      };
 
       const response = await fetch(`${baseUrl}/equipment/usage`, {
         method: 'POST',
@@ -168,6 +169,7 @@ const EquipmentUsageManage = () => {
 
   const handleDeleteClick = (equip_id: string, personnel_id: string) => {
     setRecordToDelete({equip_id, personnel_id});
+    setShowDeleteConfirm(true);
   };
 
   const confirmDelete = async () => {
@@ -176,15 +178,19 @@ const EquipmentUsageManage = () => {
     setIsLoading(prev => ({...prev, delete: true}));
     try {
       const { equip_id, personnel_id } = recordToDelete;
-      const response = await fetch(`${baseUrl}/equipment/usage/${equip_id}/${personnel_id}`, {
-        method: 'DELETE'
-      });
+      const response = await fetch(
+        `${baseUrl}/equipment/usage/${equip_id}/${personnel_id}`, 
+        { method: 'DELETE' }
+      );
 
       const data = await response.json();
       
       if (data.status === 'success') {
-        alert('使用记录删除成功');
-        fetchUsageList();
+        setUsageList(prev => 
+          prev.filter(record => 
+            !(record.equip_id === equip_id && record.personnel_id === personnel_id)
+          )
+        );
       } else {
         setError(data.message || '删除记录失败');
       }
@@ -194,7 +200,13 @@ const EquipmentUsageManage = () => {
     } finally {
       setIsLoading(prev => ({...prev, delete: false}));
       setRecordToDelete(null);
+      setShowDeleteConfirm(false);
     }
+  };
+
+  const cancelDelete = () => {
+    setRecordToDelete(null);
+    setShowDeleteConfirm(false);
   };
 
   const formatDateTime = (dateTimeString: string) => {
@@ -267,113 +279,139 @@ const EquipmentUsageManage = () => {
         </div>
       )}
 
-     {isModalOpen && (
-  <div className="modal">
-    <div className="modal-content">
-      <h3>添加仪器使用记录</h3>
-      <form onSubmit={handleSubmit}>
-        <div className="form-group">
-          <label>仪器编号：</label>
-          <input
-            type="text"
-            name="equip_id"
-            value={formData.equip_id ?? ''}
-            onChange={handleInputChange}
-            required
-            disabled={!!isLoading.form}
-          />
+      {/* 添加记录模态框 */}
+      {isModalOpen && (
+        <div className="modal">
+          <div className="modal-content">
+            <h3>添加仪器使用记录</h3>
+            <form onSubmit={handleSubmit}>
+              <div className="form-group">
+                <label>仪器编号：</label>
+                <input
+                  type="text"
+                  name="equip_id"
+                  value={formData.equip_id ?? ''}
+                  onChange={handleInputChange}
+                  required
+                  disabled={!!isLoading.form}
+                />
+              </div>
+
+              <div className="form-group">
+                <label>人员编号：</label>
+                <input
+                  type="text"
+                  name="personnel_id"
+                  value={formData.personnel_id ?? ''}
+                  onChange={handleInputChange}
+                  required
+                  disabled={!!isLoading.form}
+                />
+              </div>
+
+              <div className="form-group">
+                <label>开始时间：</label>
+                <input
+                  type="datetime-local"
+                  name="start_time"
+                  value={formData.start_time ?? ''}
+                  onChange={handleDateTimeChange}
+                  required
+                  disabled={!!isLoading.form}
+                />
+              </div>
+
+              <div className="form-group">
+                <label>结束时间：</label>
+                <input
+                  type="datetime-local"
+                  name="end_time"
+                  value={formData.end_time ?? ''}
+                  onChange={handleDateTimeChange}
+                  required
+                  disabled={!!isLoading.form}
+                />
+              </div>
+
+              <div className="form-group">
+                <label>仪器状态：</label>
+                <select
+                  name="equip_condition"
+                  value={formData.equip_condition ?? '正常'}
+                  onChange={handleInputChange}
+                  required
+                  disabled={!!isLoading.form}
+                >
+                  <option value="正常">正常</option>
+                  <option value="即将需要维护">即将需要维护</option>
+                  <option value="需要维修">需要维修</option>
+                  <option value="停用">停用</option>
+                </select>
+              </div>
+
+              <div className="form-group checkbox-group">
+                <label className="checkbox-label">
+                  <input
+                    type="checkbox"
+                    name="if_expired"
+                    checked={!!formData.if_expired}
+                    onChange={handleCheckboxChange}
+                    disabled={!!isLoading.form}
+                    className="checkbox-input"
+                  />
+                  是否过期
+                </label>
+              </div>
+
+              {error && <div className="form-error">{error}</div>}
+
+              <div className="modal-buttons">
+                <button
+                  type="submit"
+                  className="submit-button"
+                  disabled={!!isLoading.form}
+                >
+                  {isLoading.form ? '处理中...' : '保存'}
+                </button>
+                <button
+                  type="button"
+                  className="cancel-button"
+                  onClick={closeModal}
+                  disabled={!!isLoading.form}
+                >
+                  取消
+                </button>
+              </div>
+            </form>
+          </div>
         </div>
+      )}
 
-        <div className="form-group">
-          <label>人员编号：</label>
-          <input
-            type="text"
-            name="personnel_id"
-            value={formData.personnel_id ?? ''}
-            onChange={handleInputChange}
-            required
-            disabled={!!isLoading.form}
-          />
+      {/* 删除确认模态框 */}
+      {showDeleteConfirm && (
+        <div className="modal">
+          <div className="modal-content">
+            <h3>确认删除</h3>
+            <p>确定要删除这条使用记录吗？</p>
+            <div className="modal-buttons">
+              <button 
+                className="submit-button delete-confirm"
+                onClick={confirmDelete}
+                disabled={isLoading.delete}
+              >
+                {isLoading.delete ? '删除中...' : '确认删除'}
+              </button>
+              <button 
+                className="cancel-button"
+                onClick={cancelDelete}
+                disabled={isLoading.delete}
+              >
+                取消
+              </button>
+            </div>
+          </div>
         </div>
-
-        <div className="form-group">
-          <label>开始时间：</label>
-          <input
-            type="datetime-local"
-            name="start_time"
-            value={formData.start_time ?? ''}
-            onChange={handleDateTimeChange}
-            required
-            disabled={!!isLoading.form}
-          />
-        </div>
-
-        <div className="form-group">
-          <label>结束时间：</label>
-          <input
-            type="datetime-local"
-            name="end_time"
-            value={formData.end_time ?? ''}
-            onChange={handleDateTimeChange}
-            required
-            disabled={!!isLoading.form}
-          />
-        </div>
-
-        <div className="form-group">
-          <label>仪器状态：</label>
-          <select
-            name="equip_condition"
-            value={formData.equip_condition ?? '正常'}
-            onChange={handleInputChange}
-            required
-            disabled={!!isLoading.form}
-          >
-            <option value="正常">正常</option>
-            <option value="即将需要维护">即将需要维护</option>
-            <option value="需要维修">需要维修</option>
-            <option value="停用">停用</option>
-          </select>
-        </div>
-
-        <div className="form-group checkbox-group">
-          <label className="checkbox-label">
-            <input
-              type="checkbox"
-              name="if_expired"
-              checked={!!formData.if_expired}
-              onChange={handleCheckboxChange}
-              disabled={!!isLoading.form}
-              className="checkbox-input"
-            />
-            是否过期
-          </label>
-        </div>
-
-        {error && <div className="form-error">{error}</div>}
-
-        <div className="modal-buttons">
-          <button
-            type="submit"
-            className="submit-button"
-            disabled={!!isLoading.form}
-          >
-            {isLoading.form ? '处理中...' : '保存'}
-          </button>
-          <button
-            type="button"
-            className="cancel-button"
-            onClick={closeModal}
-            disabled={!!isLoading.form}
-          >
-            取消
-          </button>
-        </div>
-      </form>
-    </div>
-  </div>
-)}
-
+      )}
     </div>
   );
 };
