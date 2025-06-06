@@ -850,11 +850,12 @@ def get_high_risk_labs_and_update_training():
         with db.engine.connect() as conn:
             # 调用存储过程，更新 training_status
             conn.execute(text("CALL update_training_status_by_risk()"))
-
+            # 提交事务
+            conn.commit()
             # 查询视图返回高风险实验室信息
             result = conn.execute(text("SELECT * FROM v_high_risk_labs")).mappings().all()
             data = [dict(row) for row in result]
-
+                
         return jsonify({'status': 'success', 'data': data})
 
     except Exception as e:
